@@ -7,12 +7,58 @@
 #include <thread>
 #include <vector>
 #include <unordered_map>
+std::unordered_map<std::string, std::vector<int>> chatrooms;
 
 const int BUFFER_SIZE = 1024;
 const int MAX_CLIENTS = 10;
 const int PORT = 8888;
 
 std::vector<int> clientSockets(MAX_CLIENTS, 0);
+
+void handleChatroomSelection(int clientSocket, int clientIndex) {
+    // Send list of available chatrooms to the client
+    std::string chatroomList;
+    for (const auto& chatroom : chatrooms) {
+        chatroomList += chatroom.first + ";";
+    }
+    send(clientSocket, chatroomList.c_str(), chatroomList.length(), 0);
+
+    // Receive selected chatroom from client
+    char selectedChatroom[BUFFER_SIZE];
+    recv(clientSocket, selectedChatroom, BUFFER_SIZE, 0);
+    std::string selectedChatroomName(selectedChatroom);
+
+    // Add client to the selected chatroom
+    chatrooms[selectedChatroomName].push_back(clientIndex);
+
+    std::cout << "Client " << clientIndex << " joined chatroom: " << selectedChatroomName << std::endl;
+
+    // Handle chatroom messages
+    handleChatroomMessages(clientSocket, clientIndex, selectedChatroomName);
+}
+void handleChatroomMessages(int clientSocket, int clientIndex, const std::string& chatroomName) {
+    char buffer[BUFFER_SIZE];
+    while (true) {
+        int bytesReceived = recv(clientSocket, buffer, BUFFER_SIZE, 0);
+        if (bytesReceived <= 0) {
+            std::cout << "Client " << clientIndex << " disconnected from chatroom " << chatroomName << std::endl;
+            // Remove client from the chatroom
+            chatrooms[chatroomName].erase(std::remove(chatrooms[chatroomName].begin(), chatrooms[chatroomName].end(), clientIndex), chatrooms[chatroomName].end());
+            break;
+        }
+
+        buffer[bytesReceived] = '\0';
+        std::cout << "Client " << clientIndex << " in chatroom " << chatroomName << " says: " << buffer << std::endl;
+
+        // Broadcast the message to all clients in the chatroom
+        for (int i : chatrooms[chatroomName]) {
+            if (i != clientIndex) {
+                send(clientSockets[i], buffer, bytesReceived, 0);
+            }
+        }
+    }
+}
+
 
 void handleClient(int clientSocket, int clientIndex) {
     char buffer[BUFFER_SIZE];
@@ -85,12 +131,12 @@ int main() {
     int clientIndex = 0;
 
     while (true) {
-        // Accept connection from an incoming client
-        clientSocket = accept(serverSocket, (struct sockaddr*)&clientAddr, &clientAddrLen);
-        if (clientSocket == -1) {
-            std::cerr << "Error: Accept failed\n";
-            continue;
-        }
+    // Accept connection from an incoming client
+    clientSocket = accept(serverSocket, (struct sockaddr*)&clientAddr, &clientAddrLen);
+    if (clientSocket == -1) {
+        std::cerr << "Error: Accept failed\n";
+        continue;
+    }
 
         std::cout << "New connection established. Client IP: " << inet_ntoa(clientAddr.sin_addr)
                   << ", Port: " << ntohs(clientAddr.sin_port) << std::endl;
@@ -131,6 +177,10 @@ int main() {
         // Create thread to handle client
         std::thread clientThread(handleClient, clientSocket, clientIndex);
         clientThread.detach(); // Detach the thread to allow it to run independently
+        
+        std::thread chatroomSelectionThread(handleChatroomSelection, clientSocket, clientIndex);
+        chatroomSelectionThread.detach();
+       
     }
 
     close(serverSocket);

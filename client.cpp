@@ -11,6 +11,32 @@ const int PORT = 8888;
 
 // Function to handle receiving messages from the server
 void receiveMessages(int clientSocket, char* buffer,bool &exitFlag);
+void handleChatroomSelection() {
+    // Receive list of available chatrooms from server
+    std::string chatroomList = receiveMessage();
+
+    // Display the list of chatrooms to the user
+    std::cout << "Available chatrooms:\n";
+    std::vector<std::string> chatrooms = split(chatroomList, ';');
+    for (int i = 0; i < chatrooms.size(); i++) {
+        std::cout << i + 1 << ". " << chatrooms[i] << "\n";
+    }
+
+    // Prompt the user to select a chatroom
+    std::cout << "Enter the number of the chatroom you want to join: ";
+    int chatroomNum;
+    std::cin >> chatroomNum;
+    std::cin.ignore();
+
+    // Send the selected chatroom number to the server
+    std::string selectedChatroom = chatrooms[chatroomNum - 1];
+    sendMessage("chatroom:join:" + selectedChatroom);
+
+    // Receive confirmation from the server that the user has joined the chatroom
+    std::string joinConfirmation = receiveMessage();
+    std::cout << joinConfirmation << std::endl;
+}
+
 
 int main() {
     int clientSocket;
@@ -115,7 +141,7 @@ int main() {
     close(clientSocket);
     return EXIT_SUCCESS;
 }
-
+    handleChatroomSelection();
 void receiveMessages(int clientSocket, char* buffer,bool &exitFlag) {
     while (true) {
 
